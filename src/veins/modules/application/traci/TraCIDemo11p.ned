@@ -26,7 +26,7 @@ import org.car2x.veins.modules.application.ieee80211p.DemoBaseApplLayer;
 simple TraCIDemo11p extends DemoBaseApplLayer
 {
     parameters:
-        double randomDelayTimeMax @unit(s) = default(60ms);
+        double randomDelayTimeMax @unit(s) = default(50ms);
     @class(veins::TraCIDemo11p);
     @display("i=block/app2");
 }

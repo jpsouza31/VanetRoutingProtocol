@@ -31,11 +31,14 @@ Define_Module(veins::TraCIDemo11p);
 TraCIDemo11pMessage* TraCIDemo11p::createMessage(int to, int senderId, std::string dado, int messageId, int finalAddress, simtime_t beginTime = NULL)
 {
     TraCIDemo11pMessage* wsm = new TraCIDemo11pMessage();
-    populateWSM(wsm, to);
+    populateWSM(wsm);
     wsm->setFinalAddress(finalAddress);
     wsm->setSenderAddress(senderId);
+    wsm->setMessageLength(1);
+//    wsm->setByteLength(500000);
     wsm->setDemoData(dado.c_str());
     wsm->setMessageId(messageId);
+    wsm->setSerial(to);
     if (beginTime == NULL)
         wsm->setBeginTime(simTime());
     else
@@ -50,12 +53,16 @@ void TraCIDemo11p::createAndSendMessage(int to, int senderId, int messageId, int
     populateWSM(wsm, to);
     wsm->setFinalAddress(finalAddress);
     wsm->setSenderAddress(senderId);
+    wsm->setMessageLength(500000);
+//    wsm->setByteLength(500000);
     wsm->setDemoData(dado.c_str());
     wsm->setMessageId(messageId);
+    wsm->setSerial(to);
     if (beginTime == NULL)
         wsm->setBeginTime(simTime());
     else
         wsm->setBeginTime(beginTime);
+
     sendDown(wsm);
 }
 
@@ -66,7 +73,7 @@ void TraCIDemo11p::initialize(int stage)
         sentMessage = false;
         lastDroveAt = simTime();
         currentSubscribedServiceId = -1;
-        messageSendInterval = 20;
+        messageSendInterval = 15;
         timeToSendMessage = simTime() + messageSendInterval;
         rsuIds[0] = 13;
         rsuIds[1] = 18;
@@ -78,8 +85,13 @@ void TraCIDemo11p::initialize(int stage)
         rsuCoords[28] = Coord(1500, 1000, 3);
         messageGeneratedCount = 0;
         replicatedMessagesCount = 0;
+        receivedMessagesCount = 0;
         queue = 0;
-        queueSize = 16000000;
+        queueSize = 20000;
+        nNos = "200";
+        qSize = "20000";
+        runNumber = std::to_string(getEnvir()->getConfigEx()->getActiveRunNumber());
+        stackOverflowNumber= 0;
     }
 }
 
@@ -87,11 +99,17 @@ void TraCIDemo11p::finish()
 {
     DemoBaseApplLayer::finish();
     std::ofstream out;
-    out.open("/home/joao/Documentos/TCC/newProtocol/resultados/200/geradas.txt", std::ios::app);
+    out.open("/home/joao/Documentos/TCC/newProtocol/resultados/" + runNumber + "/geradas" + qSize + "_" + nNos + ".txt", std::ios::app);
     out << messageGeneratedCount << std::endl;
     out.close();
-    out.open("/home/joao/Documentos/TCC/newProtocol/resultados/200/replicadas.txt", std::ios::app);
+    out.open("/home/joao/Documentos/TCC/newProtocol/resultados/" + runNumber + "/replicadas" + qSize + "_" + nNos + ".txt", std::ios::app);
     out << replicatedMessagesCount << std::endl;
+    out.close();
+    out.open("/home/joao/Documentos/TCC/newProtocol/resultados/" + runNumber + "/overflow" + qSize + "_" + nNos + ".txt", std::ios::app);
+    out << stackOverflowNumber << std::endl;
+    out.close();
+    out.open("/home/joao/Documentos/TCC/newProtocol/resultados/" + runNumber + "/recebidas" + qSize + "_" + nNos + ".txt", std::ios::app);
+    out << receivedMessagesCount << std::endl;
     out.close();
 //    std::cout << "FOI GERADA ESSA QUANTIDADE DE MENSAGENS DO NODE " << myId << ": " << messageGeneratedCount << endl;
 //    std::cout << "FOI GERADA ESSA QUANTIDADE DE MENSAGENS REPLICADAS DO NODE " << myId << ": " << replicatedMessagesCount << endl;
@@ -123,42 +141,58 @@ void TraCIDemo11p::onWSA(DemoServiceAdvertisment* wsa)
 void TraCIDemo11p::onWSM(BaseFrame1609_4* frame)
 {
     TraCIDemo11pMessage* wsm = check_and_cast<TraCIDemo11pMessage*>(frame);
-
-    if (getCurrentQueueSize() + wsm->getByteLength() < getQueueSize()) {
-        addTaskSizeToQueue(wsm->getByteLength());
-        if (wsm->getBeginTime() + 0.5 > simTime()) {
-            if (wsm->getSenderAddress() != myId) {
-
-                    std::map<int, int> cControl = cControlMap[wsm->getSenderAddress()];
-                    std::map<int, int> sControl = sControlMap[wsm->getSenderAddress()];
-                    std::map<int, simtime_t> tControl = tControlMap[wsm->getSenderAddress()];
-                    std::map<int, std::vector<simtime_t>> lControl = lControlMap[wsm->getSenderAddress()];
-
-                    int c = cControl[wsm->getMessageId()];
-                    int s = sControl[wsm->getMessageId()];
-                    simtime_t t = tControl[wsm->getMessageId()];
-                    std::vector<simtime_t> l = lControl[wsm->getMessageId()];
-
-                    if (t == NULL) t = 0;
-
-                    if (t == 0) {
-                        c = 1;
-                        s = 0;
-                        t = simTime();
+    if (wsm->getBeginTime() + 0.2 > simTime()) {
+        receivedMessagesCount++;
+        int rsuId = wsm->getFinalAddress();
+        int senderAddress = wsm->getSenderAddress();
+        int messageId = wsm->getMessageId();
+        simtime_t  beginTime = wsm->getBeginTime();
+        bool alreadySendMessage = false;
+        if (wsm->getSerial() == myId) {
+            std::map<int, Coord> myRoutingMap = routingMap[myId];
+            for (auto it = myRoutingMap.begin(); it != myRoutingMap.end(); ++it) {
+                if (it->first == rsuId) {
+                    createAndSendMessage(rsuId, senderAddress, messageId, rsuId, beginTime);
+                    alreadySendMessage = true;
+    //                std::cout << "AQUI" << endl;
+                    break;
+                }
+            }
 
 
-                        TraCIDemo11pMessage* newWsm = new TraCIDemo11pMessage();
-                        populateWSM(newWsm, wsm->getFinalAddress());
-                        newWsm->setFinalAddress(wsm->getFinalAddress());
-                        newWsm->setSenderAddress(wsm->getSenderAddress());
-                        newWsm->setDemoData(wsm->getDemoData());
-                        newWsm->setMessageId(wsm->getMessageId());
-                        newWsm->setBeginTime(wsm->getBeginTime());
-                        newWsm->setKind(SEND_AID_MESSAGE);
+    //        std::cout << "HIHIHIHI: " << wsm->getSerial() << " - " << myId << endl;
+    //            if (wsm->getBeginTime() + 0.5 > simTime()) {
+            if (!alreadySendMessage) {
+                if ((getCurrentQueueSize() + 1) < getQueueSize()) {
+                      addTaskSizeToQueue(1);
+    //                std::cout << "AQUI 0" << endl;
+                    if (wsm->getSenderAddress() != myId) {
 
-                        delay = uniform(0, par("randomDelayTimeMax").doubleValue());
-                        if (sendBeaconEvt->isScheduled()) cancelEvent(sendBeaconEvt);
-                        scheduleAt(simTime() + delay, newWsm);
+                        std::map<int, int> cControl = cControlMap[wsm->getSenderAddress()];
+                        std::map<int, int> sControl = sControlMap[wsm->getSenderAddress()];
+                        std::map<int, simtime_t> tControl = tControlMap[wsm->getSenderAddress()];
+                        std::map<int, std::vector<simtime_t>> lControl = lControlMap[wsm->getSenderAddress()];
+
+                        int c = cControl[wsm->getMessageId()];
+                        int s = sControl[wsm->getMessageId()];
+                        simtime_t t = tControl[wsm->getMessageId()];
+                        std::vector<simtime_t> l = lControl[wsm->getMessageId()];
+
+                        if (t == NULL) t = 0;
+
+                        if (t == 0) {
+                            c = 1;
+                            s = 0;
+                            t = simTime();
+
+                            TraCIDemo11pMessage* newWsm = createMessage(wsm->getSerial(), wsm->getSenderAddress(), wsm->getDemoData(), wsm->getMessageId(), wsm->getFinalAddress(), wsm->getBeginTime());
+                            newWsm->setKind(SEND_AID_MESSAGE);
+
+                            delay = uniform(0, par("randomDelayTimeMax").doubleValue());
+                            if (sendBeaconEvt->isScheduled()) cancelEvent(sendBeaconEvt);
+    //                        std::cout << "AQUI 2: " << delay << endl;
+                            scheduleAt(simTime() + delay, newWsm);
+    //                    }
                     } else {
                         c++;
                         simtime_t t1 = simTime();
@@ -170,8 +204,15 @@ void TraCIDemo11p::onWSM(BaseFrame1609_4* frame)
                     sControlMap[wsm->getSenderAddress()][wsm->getMessageId()] = s;
                     tControlMap[wsm->getSenderAddress()][wsm->getMessageId()] = t;
                     lControlMap[wsm->getSenderAddress()][wsm->getMessageId()] = l;
+                        }
+    //                }
+                } else {
+                    stackOverflowNumber++;
                 }
+            }
         }
+    } else {
+    //        std::cout << "AQUI"<< endl;
     }
 }
 
@@ -219,7 +260,7 @@ void TraCIDemo11p::handleSelfMsg(cMessage* msg)
         sControlMap[wsm->getSenderAddress()][wsm->getMessageId()] = s;
         tControlMap[wsm->getSenderAddress()][wsm->getMessageId()] = t;
         lControlMap[wsm->getSenderAddress()][wsm->getMessageId()] = l;
-        removeTaskSizeToQueue(wsm->getByteLength());
+        removeTaskSizeToQueue(1);
     }
 
     if (!sendBeaconEvt->isScheduled()) {
@@ -232,19 +273,21 @@ void TraCIDemo11p::handleSelfMsg(cMessage* msg)
 
 void TraCIDemo11p::sendRoutingMessage(int rsuId, int senderAddress, simtime_t beginTime, int messageId)
 {
+//    std::cout << "ASHAPIUBSPIUABSIASBIASBAS " << endl;
     std::map<int, Coord> myRoutingMap = routingMap[myId];
     bool alreadySendMessage = false;
     int mySortedRoutingMapByDistanceToDestinyArray[myRoutingMap.size()];
     int mySortedRoutingMapByDistanceToDestinyArrayIndex = 0;
 
-    for (auto it = myRoutingMap.begin(); it != myRoutingMap.end(); ++it) {
-        if (it->first == rsuId) {
-            createAndSendMessage(rsuId, senderAddress, messageId, rsuId, beginTime);
-            alreadySendMessage = true;
-            break;
-        }
-    }
+//    for (auto it = myRoutingMap.begin(); it != myRoutingMap.end(); ++it) {
+//        if (it->first == rsuId) {
+//            createAndSendMessage(rsuId, senderAddress, messageId, rsuId, beginTime);
+//            alreadySendMessage = true;
+//            break;
+//        }
+//    }
     if (!alreadySendMessage) {
+        std::vector<int> vec;
         Coord rsuCoord = rsuCoords[rsuId];
         float currentDistance = curPosition.distance(rsuCoord);
         for (auto it = myRoutingMap.begin(); it != myRoutingMap.end(); ++it) {
@@ -255,17 +298,28 @@ void TraCIDemo11p::sendRoutingMessage(int rsuId, int senderAddress, simtime_t be
                 if (!isADenseRoad()) {
                     createAndSendMessage(targetId, senderAddress, messageId, rsuId, beginTime);
                 } else {
-                    mySortedRoutingMapByDistanceToDestinyArrayIndex = insertSorted(mySortedRoutingMapByDistanceToDestinyArray, mySortedRoutingMapByDistanceToDestinyArrayIndex, targetDistanceToRsu, myRoutingMap.size(), targetId);
+                    vec.push_back(targetId);
                 }
             }
         }
+
         if (isADenseRoad()) {
-            int indexToStart = mySortedRoutingMapByDistanceToDestinyArrayIndex - std::ceil(mySortedRoutingMapByDistanceToDestinyArrayIndex * 0.3);
-            for (int i = indexToStart; i < mySortedRoutingMapByDistanceToDestinyArrayIndex; i++) {
-                int targetId = mySortedRoutingMapByDistanceToDestinyArray[i];
-                createAndSendMessage(targetId, senderAddress, messageId, rsuId, beginTime);
+            std::vector<int> sortedVec;
+            std::vector<int> arr = insertSorted(myRoutingMap, curPosition);
+            for (const auto &item : arr) {
+                for (const auto &elem : vec) {
+                    if (item == elem) {
+                        sortedVec.push_back(elem);
+                    }
+                }
+            }
+
+            int indexToStart = sortedVec.size() - std::ceil(sortedVec.size() * 0.3);
+            for (auto it = sortedVec.begin() + indexToStart; it != sortedVec.end(); ++it) {
+                createAndSendMessage(*it, senderAddress, messageId, rsuId, beginTime);
             }
         }
+
     }
 }
 
@@ -277,22 +331,28 @@ void TraCIDemo11p::handlePositionUpdate(cObject* obj)
     std::map<int, simtime_t> myRoutingMapLastBeaconReceivedTimeAux = myRoutingMapLastBeaconReceivedTime;
 
     for (auto it = myRoutingMapLastBeaconReceivedTimeAux.begin(); it != myRoutingMapLastBeaconReceivedTimeAux.end(); ++it) {
-        if (currentTime > it->second + 10) {
+        if (currentTime > it->second + 6) {
             myRoutingMap.erase(it->first);
             myRoutingMapLastBeaconReceivedTime.erase(it->first);
         }
     }
-
-    int mySortedRoutingMapByDistanceToDestinyArray[myRoutingMap.size()];
-    int mySortedRoutingMapByDistanceToDestinyArrayIndex = 0;
 
 
     routingMap[myId] = myRoutingMap;
     routingMapLastBeaconReceivedTime[myId] = myRoutingMapLastBeaconReceivedTime;
 
     bool alreadySendMessage = false;
+
     DemoBaseApplLayer::handlePositionUpdate(obj);
-    if (myId % 5 == 0 && simTime() == timeToSendMessage) {
+//    if (myId == 40) {
+//        std::cout << "AQUII 0 -> " << timeToSendMessage << endl;
+//        std::cout << "AQUII 1 -> " << timeToSendMessage - 1 << endl;
+//        std::cout << "AQUII 2 -> " << simTime() << endl;
+//        std::cout << "AQUII 3 -> " << timeToSendMessage + 1 << endl;
+//    }
+    if (myId % 4 == 0 && simTime() > 65 && simTime() == timeToSendMessage) {
+
+        std::vector<int> vec;
         messageGeneratedCount++;
         int rsuId = rsuIds[rand() % 4];
         Coord rsuCoord = rsuCoords[rsuId];
@@ -304,6 +364,7 @@ void TraCIDemo11p::handlePositionUpdate(cObject* obj)
                 break;
             }
         }
+//        std::cout << "AQUII 1 -> " << alreadySendMessage << endl;
         if (!alreadySendMessage) {
             float currentDistance = curPosition.distance(rsuCoord);
             for (auto it = myRoutingMap.begin(); it != myRoutingMap.end(); ++it) {
@@ -312,17 +373,29 @@ void TraCIDemo11p::handlePositionUpdate(cObject* obj)
                 float targetDistanceToRsu = targetNodeCoord.distance(rsuCoord);
                 if (currentDistance > targetDistanceToRsu+10) {
                     if (!isADenseRoad()) {
+//                        std::cout << "DIRETO "<< endl;
                         createAndSendMessage(targetId, myId, messageGeneratedCount, rsuId, NULL);
                     } else {
-                        mySortedRoutingMapByDistanceToDestinyArrayIndex = insertSorted(mySortedRoutingMapByDistanceToDestinyArray, mySortedRoutingMapByDistanceToDestinyArrayIndex, targetDistanceToRsu, myRoutingMap.size(), targetId);
+                        vec.push_back(targetId);
                     }
                 }
             }
             if (isADenseRoad()) {
-                int indexToStart = mySortedRoutingMapByDistanceToDestinyArrayIndex - std::ceil(mySortedRoutingMapByDistanceToDestinyArrayIndex * 0.3);
-                for (int i = indexToStart; i < mySortedRoutingMapByDistanceToDestinyArrayIndex; i++) {
-                    int targetId = mySortedRoutingMapByDistanceToDestinyArray[i];
-                    createAndSendMessage(targetId, myId, messageGeneratedCount, rsuId, NULL);
+                std::vector<int> sortedVec;
+                std::vector<int> arr = insertSorted(myRoutingMap, curPosition);
+//                std::cout << "AQUII 1 -> " << vec.size() << endl;
+                for (const auto &item : arr) {
+                    for (const auto &elem : vec) {
+                        if (item == elem) {
+                            sortedVec.push_back(elem);
+                        }
+                    }
+                }
+
+                int indexToStart = sortedVec.size() - std::ceil(sortedVec.size() * 0.3);
+                for (auto it = sortedVec.begin(); it != sortedVec.end(); ++it) {
+//                    std::cout << "AQUI "<< *it << endl;
+                    createAndSendMessage(*it, myId, messageGeneratedCount, rsuId, NULL);
                 }
             }
         }
@@ -342,21 +415,66 @@ int getArraySize(int sizeInBytes) {
     return sizeInBytes / sizeof(int);
 }
 
-int TraCIDemo11p::insertSorted(int arr[], int n, int key, int capacity, int nodeID)
-{
-    // Cannot insert more elements if n is already
-    // more than or equal to capacity
-    if (n >= capacity)
-        return n;
+std::vector<int> TraCIDemo11p::insertSorted(std::map<int, Coord> myMap, Coord currentPos) {
 
-    int i;
-    for (i = n - 1; (i >= 0 && arr[i] > key); i--)
-        arr[i + 1] = arr[i];
+    std::map<int, float> distanceMap;
 
-    arr[i + 1] = nodeID;
+    for (auto it = myMap.begin(); it != myMap.end(); ++it) {
+        distanceMap[it->first] = currentPos.distance(it->second);
+    }
 
-    return (n + 1);
+    std::vector<std::pair<int, float>> vec;
+    std::vector<int> arr;
+
+    for (const auto &elem : distanceMap) {
+        vec.push_back(elem);
+      }
+
+    std::sort(vec.begin(), vec.end(), [](const auto &a, const auto &b) {
+       return a.second < b.second;
+     });
+
+    for (const auto &elem : vec) {
+//        std::cout << elem.second << " ";
+        arr.push_back(elem.first);
+    }
+
+    return arr;
 }
+
+//int TraCIDemo11p::insertSorted(int arr[], int n, std::map<int, Coord> key, int capacity, int nodeID, Coord curPosition)
+//{
+//    // Cannot insert more elements if n is already
+//    // more than or equal to capacity
+//    if (n >= capacity)
+//        return n;
+//
+//    for (auto it = key.begin(); it != key.end(); ++it) {
+//        std::cout << "AQUII 1 -> " << it->first << " - " << curPosition.distance(it->second) << endl;
+//    }
+//    std::cout << "AKSJHDSA 1-> " << curPosition.distance(key[nodeID]) << endl;
+//    std::cout << "AKSJHDSA 2-> " << nodeID << endl;
+//
+//    float newDistance = key[nodeID].distance(curPosition);
+//
+//    int i;
+//    for (i = n - 1; (i >= 0 && key[i].distance(curPosition) > newDistance); i--)
+//        arr[i + 1] = arr[i];
+//
+//    for (int j = 0; i < sizeof(arr); j++) {
+//        std::cout << "HIHIHI -> " << arr[j] << endl;
+//    }
+//
+//    arr[i + 1] = nodeID;
+//
+//    std::cout << " ======== " << sizeof(arr) << endl;
+//
+//    for (int j = 0; i < sizeof(arr); j++) {
+//        std::cout << "YRYRYRYR -> " << arr[j] << endl;
+//    }
+//
+//    return (n + 1);
+//}
 
 int TraCIDemo11p::getQueueSize() {
     return queueSize;

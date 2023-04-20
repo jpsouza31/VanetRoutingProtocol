@@ -32,6 +32,9 @@ void TraCIDemoRSU11p::initialize(int stage)
 {
     DemoBaseApplLayer::initialize(stage);
     messageReceivedCount = 0;
+    nNos = "200";
+    qSize = "20000";
+    runNumber = std::to_string(getEnvir()->getConfigEx()->getActiveRunNumber());
 }
 
 void TraCIDemoRSU11p::finish()
@@ -39,7 +42,7 @@ void TraCIDemoRSU11p::finish()
     DemoBaseApplLayer::finish();
     std::ofstream out;
     std::cout << "CHEGOU ESSA QUANTIDADE DE MENSAGEM NO RSU " << myId << ": " << messageReceivedCount << endl;
-    out.open("/home/joao/Documentos/TCC/newProtocol/resultados/200/entregues.txt", std::ios::app);
+    out.open("/home/joao/Documentos/TCC/newProtocol/resultados/" + runNumber + "/entregues" + qSize + "_" + nNos + ".txt", std::ios::app);
     out << messageReceivedCount << std::endl;
     out.close();
 //    std::cout << "CHEGOU ESSA QUANTIDADE DE MENSAGEM NO RSU " << myId << ": " << messageReceivedCount << endl;
@@ -70,9 +73,9 @@ void TraCIDemoRSU11p::onWSM(BaseFrame1609_4* frame)
             wsm->setEndTime(simTime());
             messageReceivedCount++;
             simtime_t delay = wsm->getEndTime() - wsm->getBeginTime();
-//            std::cout << "######" << delay << endl;
+//           std::cout << "######" << delay << endl;
             std::ofstream out;
-            out.open("/home/joao/Documentos/TCC/newProtocol/resultados/200/delay.txt", std::ios::app);
+            out.open("/home/joao/Documentos/TCC/newProtocol/resultados/" + runNumber + "/delay" + qSize + "_" + nNos + ".txt", std::ios::app);
             out << delay << std::endl;
             out.close();
         }

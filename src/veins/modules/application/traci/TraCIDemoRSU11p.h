@@ -39,6 +39,10 @@ protected:
     std::map<int, std::vector<int>> receivedMessagesMap;
     void onWSM(BaseFrame1609_4* wsm) override;
     void onWSA(DemoServiceAdvertisment* wsa) override;
+
+    std::string nNos;
+    std::string qSize;
+    std::string runNumber;
 };
 
 } // namespace veins

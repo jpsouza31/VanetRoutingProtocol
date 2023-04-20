@@ -64,6 +64,7 @@ protected:
     int messageReceivedCount;
     int messageGeneratedCount;
     int replicatedMessagesCount;
+    int receivedMessagesCount;
 
     double delay;
     std::map<int, std::map<int, int>> cControlMap;
@@ -73,6 +74,10 @@ protected:
 
     int queueSize;
     int queue;
+    std::string nNos;
+    std::string qSize;
+    std::string runNumber;
+    int stackOverflowNumber;
 
 protected:
     void onWSM(BaseFrame1609_4* wsm) override;
@@ -89,7 +94,7 @@ protected:
 
     int getNeighborsNumber();
     bool isADenseRoad();
-    int insertSorted(int arr[], int n, int key, int capacity, int nodeID);
+    std::vector<int> insertSorted(std::map<int, Coord> myMap, Coord currentPos);
 
     int getQueueSize();
     void addTaskSizeToQueue(int value);
